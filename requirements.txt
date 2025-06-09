@@ -1,4 +1,4 @@
 fastapi
 uvicorn
 python-dotenv
-vonage
+vonage==3.2.0
