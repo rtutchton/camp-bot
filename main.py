@@ -83,7 +83,7 @@ async def inbound_sms(request: Request):
         sms.send_message({
             "from": brand_name,
             "to": sender,
-            "text": "🎉 You’ve joined Listen CI Camp Alerts! Text STOP to unsubscribe."
+            "text": "🎉 You’ve joined Camp Alerts! Text STOP to unsubscribe."
         })
 
     else:
