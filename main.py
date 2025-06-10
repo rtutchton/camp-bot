@@ -85,7 +85,7 @@ async def inbound_sms(request: Request):
             "text": "You’ve joined Camp Alerts! Text STOP to unsubscribe."
         })
     
-     elif text == "send message":
+    elif text == "send_message":
         # add_subscriber(sender)
         sms.send_message({
             "from": brand_name,
