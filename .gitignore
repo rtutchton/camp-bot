@@ -1,3 +1,2 @@
 .env
-subscribers.json
-opt_out.json 
+camp_alerts.db

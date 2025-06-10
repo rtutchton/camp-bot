@@ -1,89 +1,96 @@
+import os
+import vonage
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import os, json
-import vonage
+from db import Subscriber, SessionLocal, init_db
+from sqlalchemy.exc import IntegrityError
 
 # Load env
 load_dotenv()
 api_key = os.getenv("VONAGE_API_KEY")
 api_secret = os.getenv("VONAGE_API_SECRET")
 brand_name = os.getenv("VONAGE_BRAND_NAME")
-
 client = vonage.Client(key=api_key, secret=api_secret)
 sms = vonage.Sms(client)
 app = FastAPI()
+init_db()
 
-# File-based storage
 SUBSCRIBERS_FILE = "subscribers.json"
 OPT_OUT_FILE = "opt_out.json"
 
-# Helpers
-def load_list(path):
+# db classes
+def add_subscriber(phone: str):
+    db = SessionLocal()
     try:
-        with open(path, "r") as f:
-            return set(json.load(f))
-    except:
-        return set()
+        db.add(Subscriber(phone_number=phone))
+        db.commit()
+    except IntegrityError:
+        db.rollback()  # Already exists
+    finally:
+        db.close()
 
-def save_list(data, path):
-    with open(path, "w") as f:
-        json.dump(list(data), f)
+def remove_subscriber(phone: str):
+    db = SessionLocal()
+    db.query(Subscriber).filter(Subscriber.phone_number == phone).delete()
+    db.commit()
+    db.close()
 
-# Load existing data
-subscribers = load_list(SUBSCRIBERS_FILE)
-opt_out = load_list(OPT_OUT_FILE)
+def get_all_subscribers():
+    db = SessionLocal()
+    subs = db.query(Subscriber.phone_number).all()
+    db.close()
+    return [s[0] for s in subs]
 
 class Alert(BaseModel):
     message: str
 
 @app.post("/send-alert")
 def send_alert(alert: Alert):
+    subscribers = get_all_subscribers() 
+    print(alert)
     for number in subscribers:
-        if number not in opt_out:
-            sms.send_message({
-                "from": brand_name,
-                "to": number,
-                "text": alert.message
-            })
+        print("sending to ", number)
+        sms.send_message({
+            "from": brand_name,
+            "to": number,
+            "text": alert.message
+        })
     return {"status": "Alert sent to subscribers"}
 
-@app.post("/inbound-sms")
+
+@app.api_route("/inbound-sms", methods=["GET", "POST"])
 async def inbound_sms(request: Request):
-    form = await request.form()
-    sender = form.get("msisdn")  # phone number
+    if request.method == "POST":
+        form = await request.form()
+    else:
+        form = request.query_params
+
+    sender = form.get("msisdn")
     text = form.get("text", "").strip().lower()
 
     if text == "stop":
-        opt_out.add(sender)
-        save_list(opt_out, OPT_OUT_FILE)
+        remove_subscriber(sender)
         sms.send_message({
             "from": brand_name,
             "to": sender,
             "text": "You’ve been unsubscribed. Reply START to rejoin."
         })
 
-    elif text == "start":
-        opt_out.discard(sender)
-        subscribers.add(sender)
-        save_list(opt_out, OPT_OUT_FILE)
-        save_list(subscribers, SUBSCRIBERS_FILE)
-        sms.send_message({
-            "from": brand_name,
-            "to": sender,
-            "text": "Welcome back to Camp Alerts!"
-        })
-
     elif text == "join":
-        if sender in opt_out:
-            opt_out.discard(sender)
-        subscribers.add(sender)
-        save_list(subscribers, SUBSCRIBERS_FILE)
-        save_list(opt_out, OPT_OUT_FILE)
+        add_subscriber(sender)
         sms.send_message({
             "from": brand_name,
             "to": sender,
-            "text": "🎉 You’ve joined Camp Alerts! Text STOP to unsubscribe."
+            "text": "You’ve joined Camp Alerts! Text STOP to unsubscribe."
+        })
+    
+     elif text == "send message":
+        # add_subscriber(sender)
+        sms.send_message({
+            "from": brand_name,
+            "to": sender,
+            "text": "Welcome Admin, please tell me what message you want to send out to all camp members"
         })
 
     else:
