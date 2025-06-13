@@ -60,7 +60,7 @@ def send_alert(alert: Alert):
     return {"status": "Alert sent to campers"}
 
 
-@app.api_route("/inbound-sms")
+@app.api_route("/inbound-sms", methods=["GET", "POST"])
 async def inbound_sms(request: Request):
     if request.method == "POST":
         form = await request.form()
