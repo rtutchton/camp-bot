@@ -4,3 +4,4 @@ python-dotenv
 vonage==2.5.2
 sqlalchemy
 aiosqlite
+twilio

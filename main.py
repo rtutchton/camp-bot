@@ -1,18 +1,19 @@
 import os
-import vonage
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from db import Subscriber, SessionLocal, init_db
 from sqlalchemy.exc import IntegrityError
+from twilio.rest import Client
+from twilio.twiml.messaging_response import MessagingResponse
+from fastapi.responses import PlainTextResponse
 
 # Load env
 load_dotenv()
-api_key = os.getenv("VONAGE_API_KEY")
-api_secret = os.getenv("VONAGE_API_SECRET")
-brand_name = os.getenv("VONAGE_BRAND_NAME")
-client = vonage.Client(key=api_key, secret=api_secret)
-sms = vonage.Sms(client)
+account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+twilio_number = os.getenv("TWILIO_PHONE_NUMBER")
+client = Client(account_sid, auth_token)
 app = FastAPI()
 init_db()
 
@@ -50,54 +51,39 @@ def send_alert(alert: Alert):
     subscribers = get_all_subscribers() 
     print(alert)
     for number in subscribers:
-        print("sending to ", number)
-        sms.send_message({
-            "from": brand_name,
-            "to": number,
-            "text": alert.message
-        })
-    return {"status": "Alert sent to subscribers"}
+        print(f"Sending to {number}")
+        client.messages.create(
+            body=alert.message,
+            from_=twilio_number,
+            to=number
+        )
+    return {"status": "Alert sent to campers"}
 
 
-@app.api_route("/inbound-sms", methods=["GET", "POST"])
+@app.api_route("/inbound-sms")
 async def inbound_sms(request: Request):
     if request.method == "POST":
         form = await request.form()
     else:
         form = request.query_params
 
-    sender = form.get("msisdn")
-    text = form.get("text", "").strip().lower()
+    sender = form.get("From")
+    text = form.get("Body", "").strip().lower()
+
+    resp = MessagingResponse()
 
     if text == "stop":
         remove_subscriber(sender)
-        sms.send_message({
-            "from": brand_name,
-            "to": sender,
-            "text": "You’ve been unsubscribed. Reply START to rejoin."
-        })
+        resp.message("You’ve been unsubscribed. Reply START to rejoin.")
 
     elif text == "join":
         add_subscriber(sender)
-        sms.send_message({
-            "from": brand_name,
-            "to": sender,
-            "text": "You’ve joined Camp Alerts! Text STOP to unsubscribe."
-        })
-    
+        resp.message("You’ve joined Camp Alerts! Text STOP to unsubscribe.")
+
     elif text == "send_message":
-        # add_subscriber(sender)
-        sms.send_message({
-            "from": brand_name,
-            "to": sender,
-            "text": "Welcome Admin, please tell me what message you want to send out to all camp members"
-        })
+        resp.message("Welcome Admin, please tell me what message you want to send out to all camp members.")
 
     else:
-        sms.send_message({
-            "from": brand_name,
-            "to": sender,
-            "text": "Unrecognized command. Text JOIN to subscribe or STOP to unsubscribe."
-        })
+        resp.message("Unrecognized command. Text JOIN to subscribe or STOP to unsubscribe.")
 
-    return "OK"
+    return PlainTextResponse(str(resp))
