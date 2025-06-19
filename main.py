@@ -80,11 +80,12 @@ async def inbound_sms(request: Request):
         state = get_admin_state(sender)
         if state == "awaiting_alert":
             subscribers = get_all_subscribers()
+            alert =  form.get("Body", "")
             for number in subscribers:
                 client.messages.create(
                     to=number,
                     from_=twilio_number,
-                    body=f"Camp Alert: {text}"
+                    body=f"🏕️📢 Camp Alert! \n {alert}"
                 )
             client.messages.create(
                 to=sender,
