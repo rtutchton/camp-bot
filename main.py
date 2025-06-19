@@ -1,4 +1,5 @@
 import os
+import time
 from fastapi import FastAPI, Request, Response
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -85,8 +86,9 @@ async def inbound_sms(request: Request):
                 client.messages.create(
                     to=number,
                     from_=twilio_number,
-                    body=f"🏕️📢 Camp Alert! \n {alert}"
+                    body=f"🏕️📢 Message from Listen CI Camp: \n {alert}"
                 )
+                time.sleep(1)  # to reduce throttling
             client.messages.create(
                 to=sender,
                 from_=twilio_number,
