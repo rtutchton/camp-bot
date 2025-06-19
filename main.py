@@ -11,9 +11,9 @@ load_dotenv()
 account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 twilio_number = os.getenv("TWILIO_PHONE_NUMBER")
-# admin_numbers = set(os.getenv("ADMIN_NUMBERS", "").split(","))
 client = Client(account_sid, auth_token)
 app = FastAPI()
+
 # start up functions
 init_db()
 seed_admins_from_env()
