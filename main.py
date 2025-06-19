@@ -110,11 +110,11 @@ async def inbound_sms(request: Request):
     else:
         if text == "stop":
             remove_subscriber(sender)
-            client.messages.create(
-                to=sender,
-                from_=twilio_number,
-                body="You've been unsubscribed."
-            )
+            # client.messages.create(
+            #     to=sender,
+            #     from_=twilio_number,
+            #     body="You've been unsubscribed."
+            # )
         elif text == "join" or text == "unstop":
             add_subscriber(sender)
             client.messages.create(
