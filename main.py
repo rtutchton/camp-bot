@@ -2,24 +2,23 @@ import os
 from fastapi import FastAPI, Request, Response
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from db import Subscriber, SessionLocal, init_db
 from sqlalchemy.exc import IntegrityError
 from twilio.rest import Client
 
+from db import Subscriber, Admin, SessionLocal, init_db, seed_admins_from_env
 # Load env
 load_dotenv()
 account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 twilio_number = os.getenv("TWILIO_PHONE_NUMBER")
-admin_numbers = set(os.getenv("ADMIN_NUMBERS", "").split(","))
+# admin_numbers = set(os.getenv("ADMIN_NUMBERS", "").split(","))
 client = Client(account_sid, auth_token)
 app = FastAPI()
+# start up functions
 init_db()
+seed_admins_from_env()
 
-# should integrate into db 
-admin_state = {}
-
-# db classes
+# --- db functions ----
 def add_subscriber(phone: str):
     db = SessionLocal()
     try:
@@ -42,23 +41,31 @@ def get_all_subscribers():
     db.close()
     return [s[0] for s in subs]
 
+def is_admin(phone: str) -> bool:
+    db = SessionLocal()
+    exists = db.query(Admin).filter_by(phone_number=phone).first()
+    db.close()
+    return exists is not None
+
+def get_admin_state(phone: str) -> str:
+    db = SessionLocal()
+    admin = db.query(Admin).filter_by(phone_number=phone).first()
+    db.close()
+    return admin.state if admin else "unknown"
+
+def set_admin_state(phone: str, new_state: str):
+    db = SessionLocal()
+    admin = db.query(Admin).filter_by(phone_number=phone).first()
+    if admin:
+        admin.state = new_state
+        db.commit()
+    db.close()
+
+
 class Alert(BaseModel):
     message: str
 
-# @app.post("/send-alert")
-# def send_alert(alert: Alert):
-#     subscribers = get_all_subscribers() 
-#     print(alert)
-#     for number in subscribers:
-#         print(f"Sending to {number}")
-#         client.messages.create(
-#             body=alert.message,
-#             from_=twilio_number,
-#             to=number
-#         )
-#     return {"status": "Alert sent to campers"}
-
-
+# api routes
 @app.api_route("/inbound-sms", methods=["GET", "POST"])
 async def inbound_sms(request: Request):
     if request.method == "POST":
@@ -69,27 +76,9 @@ async def inbound_sms(request: Request):
     sender = form.get("From")
     text = form.get("Body", "").strip().lower()
 
-    if text == "stop":
-        remove_subscriber(sender)
-        # resp.message("You've been unsubscribed.")
-        client.messages.create(
-            to=sender,
-            from_=twilio_number,
-            body="You've been unsubscribed."
-        )
-    elif text == "join":
-        add_subscriber(sender)
-        # resp.message("You've joined Camp Alerts!!")
-        client.messages.create(
-            to=sender,
-            from_=twilio_number,
-            body="You've joined Camp Alerts!!"
-        )
-
-
-    # Check if sender is admin
-    if sender in admin_numbers:
-        if admin_state.get(sender) == "awaiting_alert":
+    if is_admin(sender):
+        state = get_admin_state(sender)
+        if state == "awaiting_alert":
             subscribers = get_all_subscribers()
             for number in subscribers:
                 client.messages.create(
@@ -97,35 +86,45 @@ async def inbound_sms(request: Request):
                     from_=twilio_number,
                     body=f"Camp Alert: {text}"
                 )
-            # resp.message("✅ Alert sent to all subscribers.")
             client.messages.create(
                 to=sender,
                 from_=twilio_number,
                 body="✅ Alert sent to all subscribers."
             )
-            admin_state.pop(sender)  # Reset state
+            set_admin_state(sender, "idle")
+
         elif text.lower() == "send out alert":
-            admin_state[sender] = "awaiting_alert"
+            set_admin_state(sender, "awaiting_alert")
             client.messages.create(
                 to=sender,
                 from_=twilio_number,
-                body="👋 Welcome Admin. What would you like me to send out?"
+                body="👋 What message would you like to send out?"
             )
-            # resp.message("👋 Welcome Admin. What would you like me to send out?")
         else:
             client.messages.create(
                 to=sender,
                 from_=twilio_number,
-                body="⚠️ Unrecognized command. Text 'send out alert' to begin."
+                body="⚠️ Unknown command. Text 'send out alert' to begin."
             )
-            # resp.message("⚠️ Unrecognized command. Text 'send out alert' to begin.")
-
     else:
-        client.messages.create(
+        if text == "stop":
+            remove_subscriber(sender)
+            client.messages.create(
                 to=sender,
                 from_=twilio_number,
-                body="⚠️ Unrecognized command. Text 'send out alert' to begin."
+                body="You've been unsubscribed."
             )
-        # resp.message("🤖 Unrecognized command. Text JOIN to subscribe or STOP to unsubscribe.")
-
+        elif text == "join" or text == "unstop":
+            add_subscriber(sender)
+            client.messages.create(
+                to=sender,
+                from_=twilio_number,
+                body="🏕️ Welcome to Listen CI Camp Alerts! You’re all set. ✅ Text STOP anytime to unsubscribe."
+            )
+        else:
+            client.messages.create(
+                    to=sender,
+                    from_=twilio_number,
+                    body="⚠️ Unrecognized command."
+                )
     return {"status": "message sent"}
