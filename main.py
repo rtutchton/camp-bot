@@ -19,7 +19,7 @@ app = FastAPI()
 init_db()
 seed_admins_from_env()
 
-# --- db functions ----
+# db helpers
 def add_subscriber(phone: str):
     db = SessionLocal()
     try:
@@ -61,10 +61,6 @@ def set_admin_state(phone: str, new_state: str):
         admin.state = new_state
         db.commit()
     db.close()
-
-
-class Alert(BaseModel):
-    message: str
 
 # api routes
 @app.api_route("/inbound-sms", methods=["GET", "POST"])
@@ -112,11 +108,6 @@ async def inbound_sms(request: Request):
     else:
         if text == "stop":
             remove_subscriber(sender)
-            # client.messages.create(
-            #     to=sender,
-            #     from_=twilio_number,
-            #     body="You've been unsubscribed."
-            # )
         elif text == "join" or text == "unstop":
             add_subscriber(sender)
             client.messages.create(
