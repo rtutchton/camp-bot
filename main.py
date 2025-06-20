@@ -42,6 +42,12 @@ def get_all_subscribers():
     db.close()
     return [s[0] for s in subs]
 
+def get_all_admins():
+    db = SessionLocal()
+    admins = db.query(Admin.phone_number).all()
+    db.close()
+    return [a[0] for a in admins]
+
 def is_admin(phone: str) -> bool:
     db = SessionLocal()
     exists = db.query(Admin).filter_by(phone_number=phone).first()
@@ -77,7 +83,16 @@ async def inbound_sms(request: Request):
         state = get_admin_state(sender)
         if state == "awaiting_alert":
             subscribers = get_all_subscribers()
+            admins = get_all_admins()
             alert =  form.get("Body", "")
+            
+            client.messages.create(
+                to=sender,
+                from_=twilio_number,
+                body="Sending out alert, this may take a second."
+            )
+
+            # send to all subscribers
             for number in subscribers:
                 client.messages.create(
                     to=number,
@@ -85,6 +100,16 @@ async def inbound_sms(request: Request):
                     body=f"🏕️📢 Message from Listen CI Camp: \n {alert}"
                 )
                 time.sleep(1)  # to reduce throttling
+            
+            # send to all admins
+            for number in admins:
+                client.messages.create(
+                    to=number,
+                    from_=twilio_number,
+                    body=f"🏕️📢 Message from Listen CI Camp: \n {alert}"
+                )
+                time.sleep(1)  # to reduce throttling
+            
             client.messages.create(
                 to=sender,
                 from_=twilio_number,
